@@ -14,6 +14,7 @@
 #include "uart.h"
 #include "utils.h"
 #include "tasks.h"
+#include "string.h"
 
 #define CSV_FILENAME        "test_data.csv"
 #define CSV_HEADER          "Entry,DS18B20_C,MPU6050_C,DHT11_C,DHT11_%,AX_g,AY_g,AZ_g,GX_dps,GY_dps,GZ_dps\r\n"
@@ -73,6 +74,26 @@ static void format_dht11_data(char **ptr, uint8_t integer_part, uint8_t decimal_
   char *s = buffer;
   while(*s)
     *(*ptr)++ = *s++;
+}
+
+static void print_fixed_width(float value, uint8_t width, uint8_t decimals)
+{
+  char buffer[12];
+  ftoa(value, buffer, decimals);
+
+  // Calculate current length
+  uint8_t len = 0;
+  while(buffer[len])
+    len++;
+
+  // Print spaces for alignment
+  for(uint8_t i = len; i < width; i++)
+  {
+    USART1_SendChar(' ');
+  }
+
+  // Print the number
+  USART1_SendString(buffer);
 }
 
 // Initialize SD data logger
@@ -232,7 +253,46 @@ uint8_t SD_DataLogger_SaveEntry(void)
   return SD_LOGGER_OK;
 }
 
-// Lightweight line display - no parsing, just raw output with formatting
+
+// Simple string to float converter
+static float simple_atof(char *str)
+{
+  float result = 0.0f;
+  float fraction = 0.0f;
+  int sign = 1;
+  int i = 0;
+
+  // Handle sign
+  if(str[0] == '-')
+  {
+    sign = -1;
+    i = 1;
+  }
+
+  // Integer part
+  while(str[i] >= '0' && str[i] <= '9')
+  {
+    result = result * 10.0f + (str[i] - '0');
+    i++;
+  }
+
+  // Fraction part
+  if(str[i] == '.')
+  {
+    i++;
+    float divider = 10.0f;
+    while(str[i] >= '0' && str[i] <= '9')
+    {
+      fraction = fraction + (str[i] - '0') / divider;
+      divider *= 10.0f;
+      i++;
+    }
+  }
+
+  return sign * (result + fraction);
+}
+
+// Read all data
 uint32_t SD_DataLogger_ReadAll(void)
 {
   if(!initialized)
@@ -243,10 +303,8 @@ uint32_t SD_DataLogger_ReadAll(void)
 
   FIL file;
   char line[MAX_LINE_LENGTH];
-  UINT bytes_read;
   uint32_t lines_read = 0;
-  uint32_t line_pos = 0;
-  uint8_t in_line = 0;
+  uint32_t data_line = 0;
 
   FRESULT res = f_open(&file, CSV_FILENAME, FA_READ);
   if(res != FR_OK)
@@ -257,95 +315,117 @@ uint32_t SD_DataLogger_ReadAll(void)
     return 0;
   }
 
-  // Print table header
+  // Print beautiful table header (matching your flash logger style)
   USART1_SendString("\r\n");
-  USART1_SendString("+------+-------------------------------------------------------------+\r\n");
-  USART1_SendString("| Line | Data                                                        |\r\n");
-  USART1_SendString("+------+-------------------------------------------------------------+\r\n");
+  USART1_SendString(
+      "+------+----------+----------+----------+----------+----------+----------+----------+----------+----------+----------+\r\n");
+  USART1_SendString(
+      "|  #   | DS18B20  | MPU6050  | DHT11 T  | DHT11 H  |  AX(g)   |  AY(g)   |  AZ(g)   | GX(dps)  | GY(dps)  | GZ(dps)  |\r\n");
+  USART1_SendString(
+      "+------+----------+----------+----------+----------+----------+----------+----------+----------+----------+----------+\r\n");
 
-  // Read character by character and display lines
-  while(1)
+  // Skip header line
+  f_gets(line, sizeof(line), &file);
+
+  // Read and parse each data line
+  while(f_gets(line, sizeof(line), &file))
   {
-    uint8_t ch;
-    res = f_read(&file, &ch, 1, &bytes_read);
+    // Remove newline characters
+    int len = 0;
+    while(line[len] && line[len] != '\n' && line[len] != '\r')
+      len++;
+    line[len] = '\0';
 
-    if(res != FR_OK || bytes_read == 0)
+    // Parse CSV - tokenize the line
+    char *token;
+    float values[11];
+    int col = 0;
+
+    // Get first token
+    token = strtok(line, ",");
+    while(token != NULL && col < 11)
     {
-      break;
+      // Convert string to float
+      values[col] = simple_atof(token);
+      token = strtok(NULL, ",");
+      col++;
     }
 
-    // Start of new line
-    if(!in_line)
+    // Only process if we got all 11 columns
+    if(col == 11)
     {
-      // Skip header line (line 0)
-      if(lines_read == 0)
-      {
-        if(ch == '\n')
-        {
-          lines_read++;
-        }
-        continue;
-      }
+      data_line++;
 
+      // Print row with beautiful formatting
       USART1_SendString("| ");
 
-      // Print line number
-      if(lines_read < 10)
+      // Entry number (width 4)
+      if(data_line < 10)
+        USART1_SendString("   ");
+      else if(data_line < 100)
         USART1_SendString("  ");
-      else if(lines_read < 100)
+      else if(data_line < 1000)
         USART1_SendString(" ");
-      USART1_SendNumber(lines_read);
+      USART1_SendNumber(data_line);
       USART1_SendString(" | ");
 
-      in_line = 1;
-      line_pos = 0;
-    }
+      // DS18B20 temperature (width 8)
+      print_fixed_width(values[1], 8, 2);
+      USART1_SendString(" | ");
 
-    // Store character in line buffer
-    if(line_pos < MAX_LINE_LENGTH - 1)
-    {
-      line[line_pos++] = ch;
-    }
+      // MPU6050 temperature (width 8)
+      print_fixed_width(values[2], 8, 2);
+      USART1_SendString(" | ");
 
-    // End of line
-    if(ch == '\n')
-    {
-      line[line_pos] = '\0';
+      // DHT11 temperature (width 8)
+      print_fixed_width(values[3], 8, 1);
+      USART1_SendString(" | ");
 
-      // Display the line (up to 60 chars for formatting)
-      for(uint32_t i = 0; i < line_pos && i < 60; i++)
-      {
-        if(line[i] == '\r')
-          continue; // Skip carriage return
-        USART1_SendChar(line[i]);
-      }
+      // DHT11 humidity (width 8)
+      print_fixed_width(values[4], 8, 1);
+      USART1_SendString(" | ");
 
-      // Pad if needed
-      if(line_pos < 60)
-      {
-        for(uint32_t i = line_pos; i < 60; i++)
-        {
-          USART1_SendChar(' ');
-        }
-      }
+      // Accelerometer X (width 8)
+      print_fixed_width(values[5], 8, 3);
+      USART1_SendString(" | ");
 
-      USART1_SendString(" |\r\n");
+      // Accelerometer Y (width 8)
+      print_fixed_width(values[6], 8, 3);
+      USART1_SendString(" | ");
+
+      // Accelerometer Z (width 8)
+      print_fixed_width(values[7], 8, 3);
+      USART1_SendString(" | ");
+
+      // Gyro X (width 8)
+      print_fixed_width(values[8], 8, 2);
+      USART1_SendString(" | ");
+
+      // Gyro Y (width 8)
+      print_fixed_width(values[9], 8, 2);
+      USART1_SendString(" | ");
+
+      // Gyro Z (width 8)
+      print_fixed_width(values[10], 8, 2);
+      USART1_SendString(" | ");
+
+      USART1_SendString("\r\n");
       lines_read++;
-      in_line = 0;
     }
   }
 
   // Print table footer
-  USART1_SendString("+------+-------------------------------------------------------------+\r\n");
-  USART1_SendString("Total data entries: ");
-  USART1_SendNumber(lines_read - 1);  // Subtract header
-  USART1_SendString("\r\n\r\n");
+  USART1_SendString(
+      "+------+----------+----------+----------+----------+----------+----------+----------+----------+----------+----------+\r\n");
+  USART1_SendString("Total: ");
+  USART1_SendNumber(lines_read);
+  USART1_SendString(" entries\r\n\r\n");
 
   f_close(&file);
-  return lines_read - 1;
+  return lines_read;
 }
 
-// Read last N entries (lightweight version)
+// Read last N entries
 uint32_t SD_DataLogger_ReadLastN(uint32_t n)
 {
   if(!initialized || entry_count == 0)
@@ -436,13 +516,13 @@ uint32_t SD_DataLogger_GetEntryCount(void)
   return entry_count;
 }
 
-// Periodic task to log data (call this in main loop)
+// Periodic task to log data
 void Task_SD_DataLogger(void)
 {
-  USART1_SendString("Task_SD_DataLogger called\r\n");  // DEBUG
+  USART1_SendString("Task_SD_DataLogger called\r\n");
   if(!initialized)
   {
-    USART1_SendString("Not initialized!\r\n");  // DEBUG
+    USART1_SendString("Not initialized!\r\n");
     return;
   }
 
@@ -454,7 +534,7 @@ void Task_SD_DataLogger(void)
   }
   else
   {
-    USART1_SendString("Save FAILED!\r\n");  // DEBUG
+    USART1_SendString("Save FAILED!\r\n");
   }
 }
 

@@ -250,33 +250,33 @@ void Task_Button_Status(void)
     g_button2_pressed = 0;
   }
 
-  /*  // Button 3 - READ data
-   if(g_button3_pressed)
-   {
-   uint32_t count = DataLogger_ReadAll();
+  // Button 3 - READ data
+  if(g_button3_pressed)
+  {
+    uint32_t count = SD_DataLogger_ReadAll();
 
-   if(count > 0)
-   {
-   char line2[16] = "ENTRIES #";
-   char num_str[6];
-   itoa_32(DataLogger_GetEntryCount(), num_str);
+    if(count > 0)
+    {
+      char line2[16] = "ENTRIES #";
+      char num_str[6];
+      itoa_32(SD_DataLogger_GetEntryCount(), num_str);
 
-   // Find the end of "ENTRY #" to append number
-   uint8_t i = 8; // length of "ENTRY #"
-   uint8_t j = 0;
-   while(num_str[j] && i < 15)
-   {
-   line2[i++] = num_str[j++];
-   }
-   line2[i] = '\0';
+      // Find the end of "ENTRY #" to append number
+      uint8_t i = 8; // length of "ENTRY #"
+      uint8_t j = 0;
+      while(num_str[j] && i < 15)
+      {
+        line2[i++] = num_str[j++];
+      }
+      line2[i] = '\0';
 
-   Feedback_Show("READ DONE !!!", line2, 1000);
-   }
-   else
-   {
-   Feedback_Show("NO DATA !!!", "SAVE DATA FIRST", 1000);
-   }
+      Feedback_Show("READ DONE !!!", line2, 1000);
+    }
+    else
+    {
+      Feedback_Show("NO DATA !!!", "SAVE DATA FIRST", 1000);
+    }
 
-   g_button3_pressed = 0;
-   }*/
+    g_button3_pressed = 0;
+  }
 }
