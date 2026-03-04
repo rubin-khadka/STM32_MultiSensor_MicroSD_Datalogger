@@ -34,8 +34,7 @@ Pressing Button 1 cycles through four LCD display modes: DHT11 Temp/Hum → DS18
 
 https://github.com/user-attachments/assets/e8b59623-2705-426f-be46-1be9d1364807
 
-Button 2 saves sensor data to MicroSD card. Button 3 retrieves all stored data and sends via UART.
-
+Button 2 saves sensor data to MicroSD card. Button 3 retrieves all stored data and sends via UART.<br>
 Both buttons have a 1-second cooldown to prevent accidental multiple presses and allow time for data to be saved.
 
 **Data Persistence – After Reset**
@@ -55,7 +54,7 @@ HTerm output showing formatted table.
 | Component | Quantity | Description |
 |-----------|----------|-------------|
 | **STM32F103C8T6** | 1 | "Blue Pill" development board with 72MHz Cortex-M3 |
-| **DHT11 Sensor** | 1 | Temperature & Humidity sensor (1-Wire protocol) | 
+| **DHT11** | 1 | Temperature & Humidity sensor (1-Wire protocol) | 
 | **DS18B20** | 1 | Digital temperature sensor (1-Wire protocol, ±0.5°C accuracy) |
 | **MPU6050** | 1 | 6-axis inertial measurement unit (accelerometer + gyroscope + temperature) |
 | **LCD 16x2 with I2C** | 1 | Character display module with I2C backpack (PCF8574) |
@@ -103,6 +102,9 @@ The LCD display and MPU6050 share the same I2C bus (PB10/SCL, PB11/SDA) with dif
 | **MPU6050** | 0x68 | 0xD0 | 0xD1 |
 | **LCD (PCF8574)** | 0x27 | 0x4E | 0x4F |
 
+🔗 [View Custom Written I2C Driver Source Code](https://github.com/rubin-khadka/STM32_MultiSensor_MicroSD_Datalogger/blob/main/Core/Src/i2c2.c) <br>
+> **Note**: All peripherals are used as pre-built modules. The LCD module uses a PCF8574 I2C backpack. 
+
 ## Project Schematic
 
 <img width="1448" height="617" alt="Schematic_diagram" src="https://github.com/user-attachments/assets/429ae531-0c56-496d-b5db-be08bd934584" />
@@ -141,6 +143,60 @@ The system uses a **10ms timer-based control loop** with independent counters fo
 🔗 [View Button & TIMER4 Driver (Debounce)](https://github.com/rubin-khadka/STM32_MultiSensor_MicroSD_Datalogger/blob/main/Core/Src/button.c)
 
 > **Note:** DWT (Data Watchpoint and Trace) is a built-in peripheral in ARM Cortex-M3 cores that provides a cycle counter running at CPU frequency (72MHz). This gives ~13.9ns resolution, making it ideal for generating precise microsecond delays required by the DS18B20 1-Wire protocol. Unlike traditional timer-based delays, DWT does not occupy a dedicated timer peripheral and continues running in the background.
+
+## MicroSD Card & FatFS Driver
+
+The SD card interface handles all communication between the STM32 and the MicroSD card, from low-level SPI commands to high-level file operations.
+
+### Complete Custom Stack
+```
+Application Layer (sd_data_logger.c)
+↓
+High-Level File API (sd_functions.c) - Mount, read, write, list files
+↓
+FatFS Middleware (CubeMX generated)
+↓
+Disk I/O Interface (sd_diskio.c) - FatFS hardware abstraction
+↓
+Low-Level SPI Driver (sd_spi.c) - Raw SPI commands, DMA, timing
+↓
+Hardware (STM32 SPI1 + SD Card)
+```
+
+#### 1. **Low-Level Driver (`sd_spi.c`)**
+- Full SD protocol implementation (CMD0, CMD8, ACMD41, CMD17, CMD24, etc.)
+- SDHC/SDSC detection and handling
+- Single and multi-block read/write with DMA support
+- Timeout handling using TIMER2
+- CRC and error checking
+
+#### 2. **FatFS Hardware Interface (`sd_diskio.c`)**
+- Standard FatFS disk I/O functions (initialize, read, write, ioctl)
+- Connects hardware driver to FatFS middleware
+- Parameter checking and status reporting
+
+#### 3. **High-Level File API (`sd_functions.c`)**
+- **Mount/Unmount** - Filesystem detection and mounting
+- **Auto-format** - Detects unformatted cards and formats them (512/4096-byte fallback)
+- **File Operations** - Create, write, append, read, delete, rename
+- **Directory Operations** - Create folders, recursive listing with sizes
+- **Space Information** - Get free and total space in KB
+- **CSV Parsing** - Read and parse CSV files
+- **User Feedback** - Operation status over UART
+
+| Feature | Description |
+|---------|-------------|
+| **Auto-format** | If no filesystem, tries multiple sector sizes (512B → 4096B) |
+| **Data sync** | `f_sync()` after writes ensures data is written to card |
+| **SDHC/SDSC support** | Properly handles both card types |
+| **DMA transfers** | Block reads/writes with DMA |
+| **Timeout handling** | Uses TIMER2 for consistent timing |
+| **Error handling** | Return code checking and reporting |
+| **Directory listing** | Recursive listing with file sizes |
+
+🔗 [View sd_spi.c - Low-Level Driver](https://github.com/rubin-khadka/STM32_MultiSensor_MicroSD_Datalogger/blob/main/Core/Src/sd_spi.c)<br>
+🔗 [View sd_diskio.c - FatFS Interface](https://github.com/rubin-khadka/STM32_MultiSensor_MicroSD_Datalogger/blob/main/Core/Src/sd_diskio.c) <br>
+🔗 [View sd_functions.c - High-Level API](https://github.com/rubin-khadka/STM32_MultiSensor_MicroSD_Datalogger/blob/main/Core/Src/sd_functions.c) <br>
 
 ## MPU6050 IMU Driver
 
