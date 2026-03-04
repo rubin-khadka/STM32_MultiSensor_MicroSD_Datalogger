@@ -6,6 +6,14 @@
 
 ## Video Demonstrations
 
+https://github.com/user-attachments/assets/6d35bd0c-daca-4b2e-b4b6-75815050c1f4
+
+https://github.com/user-attachments/assets/e8b59623-2705-426f-be46-1be9d1364807
+
+https://github.com/user-attachments/assets/8e4eb409-ab87-4282-be4d-3cabdc085a2d
+
+https://github.com/user-attachments/assets/a17e9b4f-a549-4912-be80-437c818b989c
+
 ## Hardware Components
 
 | Component | Quantity | Description |
