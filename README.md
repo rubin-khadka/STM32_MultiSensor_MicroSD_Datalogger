@@ -346,5 +346,5 @@ git clone https://github.com/rubin-khadka/STM32_MultiSensor_MicroSD_Datalogger.g
 
 ## Contact
 **Rubin Khadka Chhetri**  
-📧 rubin.khadka84@gmail.com <br>
+📧 rubinkhadka84@gmail.com <br>
 🐙 GitHub: https://github.com/rubin-khadka
